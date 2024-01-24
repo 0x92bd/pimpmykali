@@ -102,6 +102,20 @@
 # 02.02.21 - rev 1.1.8 - fix_xfce_root fix_xfce_user fix_xfcepower external configuration file
     raw_xfce="https://raw.githubusercontent.com/Dewalt-arch/pimpmyi3-config/main/xfce4/xfce4-power-manager.xml"
 
+virtualization_type=$(systemd-detect-virt)
+if [[ "$virtualization_type" =~ ^(kvm|qemu)$ ]]; then
+    display_message "Running in $virtualization_type. Installing spice-vdagent and fixing window resize error."
+
+    # Install spice-vdagent
+    apt-get install spice-vdagent -y
+
+    # Fix window resize error for virt-manager
+    [ -f /etc/udev/rules.d/50-x-resize.rules ] || cp ./files/window-resize/50-x-resize.rules /etc/udev/rules.d/50-x-resize.rules
+    [ -f /usr/local/bin/x-resize ] || { cp ./files/window-resize/x-resize /usr/local/bin/x-resize && chmod +x /usr/local/bin/x-resize; }
+else
+    display_message "Not running in a virtualized environment. Skipping setup."
+fi
+
 check_distro() {
     distro=$(uname -a | grep -i -c "kali") # distro check
     if [ $distro -ne 1 ]
@@ -511,32 +525,6 @@ fix_pyftpdlib() {
     echo -e "\n  $greenplus pyftpdlib installed"
     }
 
-# 04.06.21 - rev 1.2.2 - add google-chrome due to gowitness dependancy
-check_chrome(){
-    [[ -f "/usr/bin/google-chrome" ]] && echo -e "\n  $greenminus google-chrome already installed - skipping  \n" || fix_chrome;
-    }
-
-# 04.06.21 - rev 1.2.2 - add google-chrome due to gowitness dependancy
-fix_chrome() {
-    if [[ "$arch" == "arm64" ]];
-     then 
-      echo -e "\n $redexclaim Google-Chrome is not available for this platform $arch -- skipping"
-    elif [[ "$arch" == "amd64" ]];
-     then 
-      # need if statement here if arm64 , chrome does not exist in kali linux on arm64 as of yet
-      echo -e "\n  $greenplus Gowitness dependancy fix: Downloading - google-chrome for $arch \n"
-      eval wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/google-chrome-stable_current_amd64.deb
-      echo -e "\n  $greenplus Gowitness dependancy fix: Installing - google-chrome for $arch \n"
-      eval apt -y install libu2f-udev
-      eval dpkg -i /tmp/google-chrome-stable_current_amd64.deb
-      rm -f /tmp/google-chrome-stable_current_amd64.deb
-      # --- old code to be removed --- 
-      # --- added as of revision 1.6.9a - changed installation source to kali repo 
-      # --- disabled as a 1.7.1 google-chrome-stable no longer in the repo!! 
-      # eval apt -y install google-chrome-stable
-    fi 
-    }
-
 # 06.18.2021 - fix_hushlogin rev 1.2.9
 fix_hushlogin() {
     echo -e "\n  $greenplus Checking for .hushlogin"
@@ -560,35 +548,6 @@ fix_hushlogin() {
     fi
     }
 
-# 06.18.2021 - disable_power_gnome rev 1.2.9
-disable_power_gnome() {
-    # CODE CONTRIBUTION : pswalia2u - https://github.com/pswalia2u
-    fix_hushlogin
-    echo -e "\n  $greenplus Gnome detected - Disabling Power Savings"
-    # ac power
-    sudo -i -u $finduser gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type nothing      # Disables automatic suspend on charging)
-     echo -e "  $greenplus org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type nothing"
-    sudo -i -u $finduser gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0         # Disables Inactive AC Timeout
-     echo -e "  $greenplus org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0"
-    # battery power
-    sudo -i -u $finduser gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type nothing # Disables automatic suspend on battery)
-     echo -e "  $greenplus org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type nothing"
-    sudo -i -u $finduser gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout 0    # Disables Inactive Battery Timeout
-     echo -e "  $greenplus org.gnome.settings-daemon.plugins.power sleep-inactive-battery-timeout 0"
-    # power button
-    sudo -i -u $finduser gsettings set org.gnome.settings-daemon.plugins.power power-button-action nothing         # Power button does nothing
-     echo -e "  $greenplus org.gnome.settings-daemon.plugins.power power-button-action nothing"
-    # idle brightness
-    sudo -i -u $finduser gsettings set org.gnome.settings-daemon.plugins.power idle-brightness 0                   # Disables Idle Brightness
-     echo -e "  $greenplus org.gnome.settings-daemon.plugins.power idle-brightness 0"
-    # screensaver activation
-    sudo -i -u $finduser gsettings set org.gnome.desktop.session idle-delay 0                                      # Disables Idle Activation of screensaver
-     echo -e "  $greenplus org.gnome.desktop.session idle-delay 0"
-    # screensaver lock
-    sudo -i -u $finduser gsettings set org.gnome.desktop.screensaver lock-enabled false                            # Disables Locking
-     echo -e "  $greenplus org.gnome.desktop.screensaver lock-enabled false\n"
-    }
-
 # 06.18.2021 - disable_power_xfce rev 1.2.9 replaces fix_xfce_power fix_xfce_user and fix_xfce_root functions
 disable_power_xfce() {
     if [ $finduser = "root" ]
@@ -603,30 +562,13 @@ disable_power_xfce() {
     fi
     }
 
-# disable_power_kde() {
-#    # need to work up a kde power management solution before implementing
-# }
-
 # 06.18.2021 - disable_power_checkde rev 1.2.9
 disable_power_checkde() {
     detect_xfce=$(ps -e | grep -c -E '^.* xfce4-session$')
-    detect_gnome=$(ps -e | grep -c -E '^.* gnome-session-*')
-    #detect_kde=$(ps -e | grep -c -E '^.* kded4$')
-    [ $detect_gnome -ne 0 ] && detected_env="GNOME"
     [ $detect_xfce -ne 0 ] && detected_env="XFCE"
-    # need to work up a kde power management solution before implementing
-    # [ $detect_kde -ne 0 ] && detected_env="KDE"
     echo -e "\n  $greenplus Detected Environment: $detected_env"
-    [ $detected_env = "GNOME" ] && disable_power_gnome
     [ $detected_env = "XFCE" ] && disable_power_xfce
     [ $detected_env = "" ] && echo -e "\n  $redexclaim Unable to determine desktop environment"
-    # [ $detected_env = "KDE" ] && disable_power_kde
-    }
-
-# 02.02.21 - rev 1.1.8 - Turn off / Silence PCSPKR beep
-silence_pcbeep() {
-    echo -e "blacklist pcspkr" > /etc/modprobe.d/nobeep.conf
-    echo -e "\n  $greenplus Terminal Beep Silenced! /etc/modprobe.d/nobeep.conf \n"
     }
 
 fix_pipxlrd() {
@@ -770,44 +712,31 @@ fix_gowitness() {
     rm -f /tmp/releases.gowitness > /dev/null
     }
 
-fix_root_connectionrefused() {
-    # fix root gedit connection refused
-    echo -e "\n  $greenplus Adding root to xhost for $finduser display: xhost +SI:localuser:root \n"
-    # 07.02.21 - may need to consider using the sudo -i -u $finduser here
-    eval sudo -i -u $finduser xhost +SI:localuser:root
-    eval xhost +SI:localuser:root
-    echo -e "\n  $greenplus root added to xhost"
-    }
-
-fix_gedit() {
-    section="gedit"
-    check=$(whereis gedit | grep -i -c "gedit: /usr/bin/gedit")
-    fix_section $section $check $force
-    fix_root_connectionrefused
-    }
-
 fix_set() {
     # move these to their individual respecitive functions at a later date - 04.11.2021 rev 1.2.4
     eval apt -y install libssl-dev set gcc-mingw-w64-x86-64-win32
-    }
+}
 
 fix_rockyou() {
-    cd /usr/share/wordlists
-    gzip -dqf /usr/share/wordlists/rockyou.txt.gz
-    echo -e "\n  $greenplus gunzip /usr/share/wordlists/rockyou.txt.gz\n"
-    }
+     if [[ -f /usr/share/wordlists/rockyou.txt.gz ]]; then
+        echo -e "Extracting rockyou.txt.gz"
+        gzip -dqf /usr/share/wordlists/rockyou.txt.gz
+    else
+        echo -e "\n  $green rockyou extracted -- skipping"
+    fi
+}
 
 locate() {
     section="locate"
     check=$(whereis locate | grep -i -c "locate: /usr/bin/locate")
     fix_section $section $check $force
-    }
+}
 
 fix_htop() {
     section="htop"
     check=$(whereis htop | grep -i -c "htop: /usr/bin/htop")
     fix_section $section $check $force
-    }
+}
 
 python3_pip() {
     # section="python3-pip"
@@ -815,23 +744,19 @@ python3_pip() {
     # force=1
     # fix_section $section $check $force
     eval apt -y reinstall python3-pip
-    }
+}
 
 seclists() {
     #section="seclists"
     # Function changed 01.15.2023 rev 1.6.0 many users were thinking the script was "stuck" with no info being displayed
-    if [[ -d /usr/share/seclists ]];
+     if [[ -d /usr/share/seclists ]];
      then
-      echo -e "\n $greenplus /usr/share/seclists  already exists -- skipping"
+      echo -e "\n $green /usr/share/seclists  already exists -- skipping"
      else
-      echo -e "\n $greenplus Download Seclists to /tmp/SecLists.zip"
-      eval wget https://github.com/danielmiessler/SecLists/archive/master.zip -O /tmp/SecList.zip
-      echo -e "\n $greenplus Extracing /tmp/Seclists.zip to /usr/share/seclists"
-      unzip -o /tmp/SecList.zip -d /usr/share/seclists
-      rm -f /tmp/SecList.zip
-      echo -e "\n $greenplus Seclists complete" 
+      apt install seclists -y
+      echo -e "\n $green Seclists complete" 
     fi
-    }
+}
 
 fix_nmap() {
     rm -f /usr/share/nmap/scripts/clamav-exec.nse
@@ -979,30 +904,6 @@ fix_bad_apt_hash() {
 #    fi
 #    }
 
-install_sublime() {
-    echo -e "\n  $greenplus installing sublime text editor"
-    # code fix provided by aashiksamuel
-    eval wget -qO - https://download.sublimetext.com/sublimehq-pub.gpg | gpg --no-default-keyring --keyring ./temp-keyring.gpg --import
-    eval gpg --no-default-keyring --keyring ./temp-keyring.gpg --export --output sublime-text.gpg
-    eval rm temp-keyring.gpg temp-keyring.gpg~
-    eval mkdir -p /usr/local/share/keyrings
-    eval mv ./sublime-text.gpg /usr/local/share/keyrings
-    eval apt-get install apt-transport-https
-    eval echo "deb [signed-by=/usr/local/share/keyrings/sublime-text.gpg] https://download.sublimetext.com/ apt/stable/" > /etc/apt/sources.list.d/sublime-text.list
-    apt_update && apt_update_complete
-    eval apt -y install sublime-text
-    }
-
-# 06.01.21 - Function rewrite code-oss was added to Kali 2021.2 repo
-install_vscode() {
-    if [[ -f /usr/bin/code ]]; then
-      echo -e "\n  $greenminus  vscode already installed - skipping"
-    else
-    	echo -e "\n  $greenplus installing vscode"
-      apt_update && apt_update_complete && apt -y install code-oss
-      echo -e "\n  $greenplus  vscode - installed "
-    fi
-    }
 
 # 04.06.2021 fix_sources rev 1.2.2 / rev 1.3.2 updated to add wildcards
 fix_sources() {
@@ -1054,109 +955,6 @@ make_rootgreatagain() {
         *) echo -e "\n invalid key try again Y or N"; make_rootgreatagain;;
     esac
     }
-
-enable_rootlogin() {
-    section="kali-root-login"
-    check=$(whereis kali-root-login | grep -i -c "kali-root-login: /usr/share/kali-root-login")
-    fix_section $section $check $force
-    echo -e "\n\nEnabling Root Login Give root a password"
-    passwd root
-    if [ "$?" -ne 0 ]
-     then
-      echo -e "\n  $redexclaim - Passwords did not match - restarting this function"
-      enable_rootlogin
-    else
-      echo -e "\n  $greenplus - Password updated"
-    fi
-    echo -e "\n  $greenplus root login enabled \n"
-    ask_homekali_to_root
-    }
-
-# 01.02.2021 - rev 1.1.2 begin - new screens for copying from /home/kali to /root, no detection, all based on used input
-ask_homekali_to_root() {
-    echo -e "\n\n KALI-ROOT-LOGIN INSTALLATION: - PAGE 2   "$red"*** READ CAREFULLY! ***"$white" \n"
-    echo -e "   This section of the script is only executed if Yes was selected at the enable root login prompt\n"
-    echo -e "   If you are planning on operating your kali install as root instead of the user kali, "
-    echo -e "   by default there is nothing in /root, This script has the ability to copy everything"
-    echo -e "   from /home/$finduser to /root for you. \n"
-    echo -e "  $red Warning:$white This copy function $red will overwrite $white anything in /root with the entire contents of /home/kali"
-    echo -e "   The copy statement that is going to be performed if you select Y is:\n "
-    echo -e "    cp -Rvf /home/$finduser/* /home/$finduser/.* /root"
-    echo -e "\n   Would you like to copy everything from /home/$finduser to /root ?"
-    echo -e "     Press Y - to copy everything from /home/$finduser to /root"
-    echo -e "     Press N - do not copy anything to /root and skip this function\n"
-    read -n1 -p "   Please type Y or N : " userinput
-      case $userinput in
-        y|Y) ask_are_you_sure;;
-        n|N) echo -e "\n\n  $redexclaim skipping copy of /home/$finduser to /root" ;;
-        *) echo -e "\n\n  $redexclaim Invalid key try again, Y or N keys only $redexclaim"; ask_homekali_to_root;;
-      esac
-    }
-
-# 01.03.2021 - rev 1.1.3 begin - added are you sure prompt
-ask_are_you_sure() {
-    echo -e "\n\n   Are you sure you want to copy all of /home/$finduser to /root ?"
-    read -n1 -p "   Please type Y or N : " userinput
-     case $userinput in
-       y|Y) perform_copy_to_root;;
-       n|N) echo -e "\n\n  $redexclaim skipping copy of /home/$finduser to /root - not copying ";;
-         *) echo -e "\n\n  $redexclaim Invalid key try again, Y or N keys only $redexclaim"; ask_are_you_sure;;
-     esac
-    }
-
-# 01.02.2021 - rev 1.1.2 - copy to /root warning screens and function
-perform_copy_to_root() {
-    echo -e "\n\n  $greenplus Copying everything from /home/$finduser to /root... Please wait..."
-    # add call to check_helpers here before doing the copy from /home/kali to /root
-     if [[ $finduser = "root" ]]
-      then
-       echo -e "Your already root!"
-     else
-       # [[ ! -d /root/Desktop ]] && cp -RVf /home/$findrealuser/kali/Desktop /root/Desktop
-       echo -e "\n\n cp -Rvf /home/$finduser/.* /home/$finduser/* \n\n"
-       eval cp -Rvf /home/$finduser/.* /home/$finduser/* /root >/dev/null 2>&1
-       eval chown -R root:root /root
-       echo -e "\n  $greenplus Everything from /home/$finduser has been copied to /root"
-     fi
-    }
-
-# check_helpers() {
-  # check /home/kali/.config/xfce4/helpers.rc for default settings of WebBrowser TerminalEmulator FileManager
-  # may need this in the copy to root function above , code is commented out and only a place holder currently
-  # if /root/.config/xfce4/helpers.rc AND /home/kali/.config/xfce4/helpers.rc does not exist create a new file for /root/.config/xfce4/helpers.rc
-#    if [ -f /home/kali/.config/xfce4/helpers.rc ]
-#     then
-#      check_browser=$(cat /home/kali/.config/xfce4/helpers.rc | grep -c "WebBrowser")
-#      if [ $check_browser = 1 ]
-#       then
-#        check_which_browser=$(cat /home/kali/.config/xfce4/helpers.rc | grep "WebBrowser" | cut -d "=" -f2)
-#        echo "WebBrowser is set and default browser is $check_which_browser"
-#      else
-#        echo "Browser is not set"
-#      fi
-#
-#      check_terminal=$(cat /home/kali/.config/xfce4/helpers.rc | grep -c "TerminalEmulator")
-#      if [ $check_terminal = 1 ]
-#       then
-#        check_which_terminal=$(cat /home/kali/.config/xfce4/helpers.rc | grep  "TerminalEmulator" | cut -d "=" -f2)
-#        echo "TerminalEmulator is set and default terminal is $check_which_terminal"
-#       else
-#        echo "Default TerminalEmulator is not set"
-#      fi
-#
-#      check_filemanager=$(cat /home/kali/.config/xfce4/helpers.rc | grep -c "FileManager")
-#      if [ $check_filemanager = 1 ]
-#       then
-#        check_which_filemanager=$(cat /home/kali/.config/xfce4/helpers.rc | grep "FileManager" | cut -d "=" -f2)
-#        echo "FileManager is set and default file manager is $check_which_filemanager"
-#       else
-#        echo "Default FileManager is not set"
-#      fi
-#     else
-#      echo "/home/kali/.config/xfce4/helpers.rc does not exist - do something about it"
-#    fi
-#   }
-
 
 fix_sead_warning() {
     clear
@@ -1404,7 +1202,7 @@ check_vm() {
           echo -e "\n  $greenplus *** QEMU/LIBVIRT DETECTED *** \n"
           eval apt -y reinstall spice-vdagent qemu-guest-agent
           # xserver-xorg-video-qxl - rev 1.5.4 no longer in the kali repo
-          echo -e "\n  $greenplus installing xserver-xorg-video-qxl spice-vdagent"
+          echo -e "\n  $greenplus spice-vdagent"
       else
         echo -e "\n $redstar Hypervisor not detected, Possible bare-metal installation not updating"
     fi
@@ -2184,8 +1982,8 @@ gen_new_sources() {
   	i=$(cat /tmp/mirrors_speedtest | sort -n | tail -n1 | cut -d "/" -f3)
   	final_mirror=$(cat /tmp/timetest.list | grep "$i" | sed s:"http\:\/\/":"":g | sed s:"/README":"":g )
     # --- relaxed grep and sed, implement at later date 12.11.2021 - should now work with tracelabs osint vm
-    newdeb=$(cat /etc/apt/sources.list | grep "deb http\:\/\/.* kali\-rolling.*" | sed s:"deb http\:\/\/.* kali\-rolling.*":"deb http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free":g)
-    newdebsrc=$(cat /etc/apt/sources.list | grep "deb-src http\:\/\/.* kali\-rolling.*" | sed s:"deb-src http\:\/\/.* kali\-rolling.*":"deb\-src http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free":g )
+    newdeb=$(cat /etc/apt/sources.list | grep "deb http\:\/\/.* kali\-rolling.*" | sed s:"deb http\:\/\/.* kali\-rolling.*":"deb http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free non\-free\-firmware":g)
+    newdebsrc=$(cat /etc/apt/sources.list | grep "deb-src http\:\/\/.* kali\-rolling.*" | sed s:"deb-src http\:\/\/.* kali\-rolling.*":"deb\-src http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free non\-free\-firmware":g )
     sourcefile=/etc/apt/sources.list
     echo -e "\n  $greenplus Based on tests the best selection is: $i "
     echo -e "\n  Preview of the new /etc/apt/sources.list:"
@@ -2194,8 +1992,8 @@ gen_new_sources() {
     read -n1 -p "   Please type Y or N : " userinput
      case $userinput in
        y|Y) echo -e "\n\n  $greenplus Saving changes to /etc/apt/sources.list"; cp $sourcefile ${sourcefile}_$(date +%F-%T); \
-       sed s:"deb http\:\/\/.* kali\-rolling.*":"deb http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free":g -i $sourcefile; \
-       sed s:"deb-src http\:\/\/.* kali\-rolling.*":"deb\-src http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free":g -i $sourcefile; \
+       sed s:"deb http\:\/\/.* kali\-rolling.*":"deb http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free non\-free\-firmware":g -i $sourcefile; \
+       sed s:"deb-src http\:\/\/.* kali\-rolling.*":"deb\-src http\:\/\/"$final_mirror" kali\-rolling main contrib non\-free non\-free\-firmware":g -i $sourcefile; \
        echo -e "\n  $greenplus Running apt update with mirror $final_mirror selected \n";  apt update;;
        n|N) echo -e "\n\n  $redexclaim Not saving changes";;
          *) echo -e "\n\n  $redexclaim Invalid key try again, Y or N keys only $redexclaim"; gen_new_sources;;
