@@ -102,6 +102,7 @@
 # 02.02.21 - rev 1.1.8 - fix_xfce_root fix_xfce_user fix_xfcepower external configuration file
     raw_xfce="https://raw.githubusercontent.com/Dewalt-arch/pimpmyi3-config/main/xfce4/xfce4-power-manager.xml"
 
+# Check if running in a virtualized environment
 virtualization_type=$(systemd-detect-virt)
 if [[ "$virtualization_type" =~ ^(kvm|qemu)$ ]]; then
     display_message "Running in $virtualization_type. Installing spice-vdagent and fixing window resize error."
